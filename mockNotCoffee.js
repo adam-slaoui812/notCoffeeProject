@@ -76,7 +76,9 @@ function makeYelpRequestManual(term, place, responseToGenerate){
 
 function makeAutoYelpRequest(term, long, lat, responseToGenerate){
 	
-	var baseURL='https://api.yelp.com/v3/businesses/search?term=';
+	try {
+
+	 var baseURL='https://api.yelp.com/v3/businesses/search?term=';
 	
 	url = baseURL + term + "&longitude=" + long + "&latitude=" + lat + "&categories=coffee";
 	console.log(url);
@@ -93,8 +95,10 @@ function makeAutoYelpRequest(term, long, lat, responseToGenerate){
 			 'Authorization': bearerAuth
 		  }
 		}, function(err, res) {
-			  if(err) {
-				console.error(err);
+			  if(!term || !long || !lat) {
+				return res.status(400).json({
+					error: "Missing params"
+		       	});
 			  } else {
 				console.log("WE HAVE THE RESULTS! FOR " + term + " in long: " + long + " lat: " + lat);
 				//console.log(res.body);
@@ -119,9 +123,17 @@ function makeAutoYelpRequest(term, long, lat, responseToGenerate){
 				// for (const [key, value] of Object.entries(res.body)) {
 				//   console.log(value);
 				// }
-			  }
-	});
-}
+			}
+		});
+       
+	 } catch (err) {
+	console.log("FATAL CRASH SAFE: ", err);
+	responseToGenerate.end(JSON.stringify({
+		error: "Server crash prevented",
+		message: err.message
+	}));
+  }
+} 
 
 const server = http.createServer((req, res) => {
 	console.log("Hi!");
