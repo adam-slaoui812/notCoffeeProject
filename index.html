@@ -103,6 +103,14 @@ h1 { text-align:center; font-size:80px; font-weight:bold; }
   padding: 10px;
 }
 
+#locationForm .location-label {
+  display: block;
+  margin: 8px 0 2px;
+  position: static;
+  transform: none;
+  width: auto;
+}
+
 #autoLoc, #submitBtn {
   width: 48%;
   margin-top: 10px;
@@ -130,6 +138,147 @@ h1 { text-align:center; font-size:80px; font-weight:bold; }
 
 #optionResults {
   margin: 20px;
+}
+
+.drink-section {
+  margin: 28px auto;
+  max-width: 900px;
+}
+
+.drink-section h3 {
+  color: #4F3711;
+  font-size: 1.7rem;
+  margin: 0 0 12px;
+}
+
+.drink-section .collection {
+  margin: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.result-controls {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.see-more-button,
+.see-less-button {
+  background: #509f96;
+  border: 0;
+  border-radius: 18px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 22px;
+}
+
+.see-more-button:hover,
+.see-less-button:hover {
+  background: #3f817a;
+}
+
+.result-item {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  min-height: 82px;
+}
+
+.result-business {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  flex: 1;
+  gap: 14px;
+  min-width: 0;
+}
+
+.result-business:hover {
+  color: #4F3711;
+}
+
+.result-business img.circle {
+  flex: 0 0 50px;
+  height: 50px;
+  object-fit: cover;
+  width: 50px;
+}
+
+.result-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.result-details .title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.result-rating,
+.result-address,
+.result-distance {
+  font-size: .95rem;
+}
+
+.result-rating {
+  color: #70551d;
+}
+
+.result-address {
+  color: #666;
+}
+
+.result-distance {
+  color: #4F3711;
+  flex: 0 0 auto;
+  font-weight: 600;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+
+#searchStatus {
+  color: #4F3711;
+  display: none;
+  margin: 12px 20px;
+  text-align: center;
+}
+
+@media (max-width: 650px) {
+  .wrapper {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .container, .container2 {
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .result-item {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .result-business {
+    align-items: flex-start;
+    gap: 9px;
+  }
+
+  .result-business img.circle {
+    flex-basis: 42px;
+    height: 42px;
+    width: 42px;
+  }
+
+  .result-distance {
+    font-size: .85rem;
+    white-space: normal;
+  }
 }
 </style>
 </head>
@@ -179,120 +328,253 @@ onclick="window.open('https://www.instagram.com/notcoffeeplz/', '_blank')">
 
 <div id="customerInput">
 
-  <label>Where?</label>
+  <form id="locationForm">
+    <label class="location-label" for="specAddr">Street or city</label>
+    <input id="specAddr" name="address" placeholder="Enter a street address or city" type="text" autocomplete="street-address" />
+    <label class="location-label" for="postCode">Postcode</label>
+    <input id="postCode" name="postcode" placeholder="Enter a postcode" type="text" autocomplete="postal-code" />
 
-  <input id="specAddr" placeholder="Address" type="text"/>
-  <input id="postCode" placeholder="Postcode" type="text"/>
-
-  <button id="autoLoc" onclick="autoLoc()">AutoLocate</button>
-  <button id="submitBtn" onclick="submit()">Submit</button>
+    <button id="autoLoc" type="button" onclick="autoLoc()">Use my location</button>
+    <button id="submitBtn" type="submit">Search by address</button>
+  </form>
 
 </div>
 
-<h2 id="optionsHeader">Options:</h2>
+<h2 id="optionsHeader">Options by drink</h2>
+<p id="searchStatus" role="status" aria-live="polite"></p>
 <div id="options">
-  <ul id="optionResults" class="collection"></ul>
+  <div id="optionResults"></div>
 </div>
 
 <script>
-// (unchanged JS — no need to modify for image fix)
+const YELP_PROXY = "https://cryptollama.app/my-apis";
 
-function submit() {
-  $("#optionResults").empty();
+function getSelectedDrinks() {
+  return Array.from(document.querySelectorAll("input[type='checkbox']:checked")).map(box => ({
+    term: box.id,
+    label: box.nextElementSibling.textContent.trim()
+  }));
+}
 
-  let locVar =
-    (document.getElementById('specAddr').value || "") +
-    " " +
-    (document.getElementById('postCode').value || "");
+function setSearchStatus(message) {
+  const status = document.getElementById("searchStatus");
+  status.textContent = message || "";
+  status.style.display = message ? "block" : "none";
+}
 
-  let boxes = $(":checkbox:checked");
+function formatDistance(meters) {
+  if (meters === null || meters === undefined || meters === "") return "Distance unavailable";
+  const distance = Number(meters);
+  if (!Number.isFinite(distance) || distance < 0) return "Distance unavailable";
+  const miles = distance / 1609.344;
+  return `${miles < 0.1 ? miles.toFixed(2) : miles.toFixed(1)} mi away`;
+}
 
-  let customerBevs = [];
-  for (let i = 0; i < boxes.length; i++) {
-    customerBevs.push(boxes[i].id);
+function makeResultRow(business) {
+  const item = document.createElement("li");
+  item.className = "collection-item result-item";
+
+  const link = document.createElement("a");
+  link.className = "result-business";
+  link.href = business.url || "#";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+
+  if (business.image_url) {
+    const image = document.createElement("img");
+    image.className = "circle";
+    image.src = business.image_url;
+    image.alt = "";
+    link.appendChild(image);
   }
 
-  if (customerBevs.length === 0) return;
+  const details = document.createElement("span");
+  details.className = "result-details";
 
-  customerBevs.forEach(currBev => {
+  const name = document.createElement("span");
+  name.className = "title";
+  name.textContent = business.name || "Unnamed business";
+  details.appendChild(name);
 
-    let url =
-      "https://cryptollama.app/my-apis&type=1" +
-      "&term=" + encodeURIComponent(currBev) +
-      "&location=" + encodeURIComponent(locVar);
+  const rating = document.createElement("span");
+  rating.className = "result-rating";
+  const ratingValue = Number(business.rating);
+  const reviewCount = Number(business.review_count);
+  rating.textContent = business.rating !== null && business.rating !== undefined && Number.isFinite(ratingValue)
+    ? `${ratingValue.toFixed(1)}/5 on Yelp${Number.isFinite(reviewCount) && reviewCount > 0 ? ` (${reviewCount} reviews)` : ""}`
+    : "Yelp rating unavailable";
+  details.appendChild(rating);
 
-    $.getJSON(url, function(result) {
-      if (result.status == 200 && result.success) {
+  const address = document.createElement("span");
+  address.className = "result-address";
+  const location = business.location || {};
+  const addressParts = [
+    location.address1,
+    location.address2,
+    location.city,
+    location.state,
+    location.zip_code
+  ].filter(Boolean);
+  address.textContent = addressParts.join(", ") || "Address unavailable";
+  details.appendChild(address);
+  link.appendChild(details);
+  item.appendChild(link);
 
-        $("#optionsHeader").show();
-        $("#options").show();
+  const distance = document.createElement("span");
+  distance.className = "result-distance";
+  distance.textContent = formatDistance(business.distance);
+  item.appendChild(distance);
+  return item;
+}
 
-        let item = result.info[0];
+function renderDrinkResults(drink, businesses) {
+  const section = document.createElement("section");
+  section.className = "drink-section";
 
-        $("#optionResults").append(
-          "<li class='collection-item avatar'>" +
-          "<a href='" + item.url + "'>" +
-          "<img src='" + item.image_url + "' class='circle'>" +
-          "<span class='title'>" + item.name + "</span><br>" +
-          item.location.address1 + " " + item.location.zip_code +
-          "<br>" + item.location.city +
-          "</a></li>"
-        );
-      }
-    });
+  const heading = document.createElement("h3");
+  heading.textContent = `Serving ${drink.label}`;
+  section.appendChild(heading);
 
+  const list = document.createElement("ul");
+  list.className = "collection";
+
+  if (!businesses.length) {
+    const empty = document.createElement("li");
+    empty.className = "collection-item";
+    empty.textContent = `No Yelp results found for ${drink.label.toLowerCase()}.`;
+    list.appendChild(empty);
+  } else {
+    let visibleCount = Math.min(5, businesses.length);
+    businesses.slice(0, visibleCount).forEach(business => list.appendChild(makeResultRow(business)));
+
+    if (businesses.length > visibleCount) {
+      const controls = document.createElement("div");
+      controls.className = "result-controls";
+
+      const seeMore = document.createElement("button");
+      seeMore.className = "see-more-button";
+      seeMore.type = "button";
+      seeMore.textContent = "See more";
+      const seeLess = document.createElement("button");
+      seeLess.className = "see-less-button";
+      seeLess.type = "button";
+      seeLess.textContent = "See less";
+      seeLess.hidden = true;
+
+      seeMore.addEventListener("click", () => {
+        const nextCount = Math.min(visibleCount + 5, businesses.length);
+        businesses.slice(visibleCount, nextCount).forEach(business => list.appendChild(makeResultRow(business)));
+        visibleCount = nextCount;
+        seeMore.hidden = visibleCount >= businesses.length;
+        seeLess.hidden = false;
+      });
+      seeLess.addEventListener("click", () => {
+        Array.from(list.querySelectorAll(".result-item")).slice(5).forEach(item => item.remove());
+        visibleCount = Math.min(5, businesses.length);
+        seeMore.hidden = false;
+        seeLess.hidden = true;
+      });
+
+      section.appendChild(list);
+      controls.append(seeMore, seeLess);
+      section.appendChild(controls);
+      return section;
+    }
+  }
+
+  section.appendChild(list);
+  return section;
+}
+
+function buildSearchUrl(drink, location, coordinates) {
+  let url = `${YELP_PROXY}&type=${coordinates ? 2 : 1}&term=${encodeURIComponent(drink.term)}`;
+  if (coordinates) {
+    url += `&longitude=${encodeURIComponent(coordinates.longitude)}&latitude=${encodeURIComponent(coordinates.latitude)}`;
+  } else {
+    url += `&location=${encodeURIComponent(location)}`;
+  }
+  return url;
+}
+
+async function searchForDrinks(location, coordinates) {
+  const drinks = getSelectedDrinks();
+  const results = document.getElementById("optionResults");
+  results.replaceChildren();
+  document.getElementById("optionsHeader").style.display = "block";
+  document.getElementById("options").style.display = "block";
+
+  if (!drinks.length) {
+    setSearchStatus("Choose at least one drink to search.");
+    return;
+  }
+
+  setSearchStatus("Searching Yelp...");
+  const responses = await Promise.all(drinks.map(async drink => {
+    try {
+      const response = await $.getJSON(buildSearchUrl(drink, location, coordinates));
+      const businesses = response && response.success && Array.isArray(response.info)
+        ? response.info
+        : [];
+      return { drink, businesses, failed: !(response && response.success) };
+    } catch (error) {
+      return { drink, businesses: [], failed: true };
+    }
+  }));
+
+  responses.forEach(({ drink, businesses, failed }) => {
+    results.appendChild(renderDrinkResults(drink, businesses));
+    if (failed) {
+      const section = results.lastElementChild;
+      const message = section.querySelector(".collection-item");
+      if (message) message.textContent = `Could not load Yelp results for ${drink.label.toLowerCase()}. Please try again.`;
+    }
   });
+
+  setSearchStatus("");
+}
+
+function searchByAddress() {
+  const address = document.getElementById("specAddr").value.trim();
+  const postcode = document.getElementById("postCode").value.trim();
+  const location = [address, postcode].filter(Boolean).join(" ");
+
+  if (!location) {
+    setSearchStatus("Enter an address or postcode, or use AutoLocate.");
+    return;
+  }
+
+  searchForDrinks(location, null);
 }
 
 function autoLoc() {
-  if (!navigator.geolocation) return;
+  if (!navigator.geolocation) {
+    setSearchStatus("Location services are not available in this browser. Enter an address or postcode instead.");
+    return;
+  }
 
-  navigator.geolocation.getCurrentPosition(function(position) {
-    autoLocSubmit(position.coords.longitude, position.coords.latitude);
-  });
-}
-
-function autoLocSubmit(long, lat) {
-
-  $("#optionResults").empty();
-
-  let boxes = $(":checkbox:checked");
-  let customerBevs = [];
-
-  boxes.each(function() {
-    customerBevs.push(this.id);
-  });
-
-  customerBevs.forEach(currBev => {
-
-    $.getJSON(
-      "https://cryptollama.app/my-apis&type=2" +
-      "&term=" + currBev +
-      "&longitude=" + long.toFixed(2) +
-      "&latitude=" + lat.toFixed(2),
-
-      function(result) {
-        if (result.status == 200 && result.success) {
-
-          $("#optionsHeader").show();
-          $("#options").show();
-
-          let item = result.info[0];
-
-          $("#optionResults").append(
-            "<li class='collection-item avatar'>" +
-            "<a href='" + item.url + "'>" +
-            "<img src='" + item.image_url + "' class='circle'>" +
-            "<span class='title'>" + item.name + "</span><br>" +
-            item.location.address1 +
-            "</a></li>"
-          );
-        }
+  setSearchStatus("Finding your location...");
+  navigator.geolocation.getCurrentPosition(
+    position => searchForDrinks("", {
+      longitude: position.coords.longitude,
+      latitude: position.coords.latitude
+    }),
+    error => {
+      if (error.code === error.PERMISSION_DENIED) {
+        setSearchStatus("Location access is blocked. Allow location for this site in your browser settings, or enter an address or postcode below.");
+      } else if (error.code === error.TIMEOUT) {
+        setSearchStatus("It took too long to find your location. Try again or enter an address or postcode below.");
+      } else {
+        setSearchStatus("Your location is unavailable right now. Try again or enter an address or postcode below.");
       }
-    );
-
-  });
+    },
+    { enableHighAccuracy: false, maximumAge: 300000, timeout: 20000 }
+  );
 }
+
+document.getElementById("locationForm").addEventListener("submit", event => {
+  event.preventDefault();
+  searchByAddress();
+});
 </script>
 
 </body>
